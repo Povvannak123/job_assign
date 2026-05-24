@@ -1,0 +1,53 @@
+#!/bin/bash
+set -e
+
+echo "=== Job Assign Management System — Backend ==="
+
+# Wait for PostgreSQL to be ready
+echo "Waiting for PostgreSQL at ${DB_HOST}:${DB_PORT}..."
+until php -r "
+    try {
+        new PDO(
+            'pgsql:host=${DB_HOST};port=${DB_PORT};dbname=${DB_DATABASE}',
+            '${DB_USERNAME}',
+            '${DB_PASSWORD}'
+        );
+        echo 'ok';
+    } catch (Exception \$e) {
+        exit(1);
+    }
+" 2>/dev/null | grep -q "ok"; do
+    echo "  PostgreSQL not ready yet — retrying in 3s..."
+    sleep 3
+done
+echo "PostgreSQL is ready."
+
+# Clear config cache to pick up environment variables
+php artisan config:clear 2>/dev/null || true
+
+# Run migrations
+echo "Running migrations..."
+php artisan migrate --force
+
+# Clear application cache now that tables exist
+php artisan cache:clear 2>/dev/null || true
+
+# Seed only if no users exist
+echo "Checking if database needs seeding..."
+USER_COUNT=$(php -r "
+require __DIR__.'/vendor/autoload.php';
+\$app = require_once __DIR__.'/bootstrap/app.php';
+\$kernel = \$app->make(Illuminate\Contracts\Console\Kernel::class);
+\$kernel->bootstrap();
+echo App\Models\User::count();
+" 2>/dev/null || echo "0")
+
+if [ "$USER_COUNT" = "0" ]; then
+    echo "Seeding database..."
+    php artisan db:seed --force
+else
+    echo "Database already seeded (${USER_COUNT} users found) — skipping."
+fi
+
+echo "Starting Apache..."
+exec "$@"

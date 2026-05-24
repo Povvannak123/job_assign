@@ -1,0 +1,108 @@
+services:
+
+  # ─── PostgreSQL Database ───────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: job_assign_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: job_assign_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d job_assign_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - job_assign_net
+
+  # ─── pgAdmin ──────────────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: job_assign_pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@pgadmin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin-servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "5050:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - job_assign_net
+
+  # ─── Laravel Backend ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: job_assign_backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: "Job Assign Management System"
+      APP_ENV: production
+      APP_KEY: base64:0ehRbeF2sv/28EAxBRAvTIBBVr//EYkL534XxEZ7x0k=
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: job_assign_db
+      DB_USERNAME: postgres
+      DB_PASSWORD: secret
+      CACHE_STORE: file
+      SESSION_DRIVER: file
+      QUEUE_CONNECTION: sync
+      FILESYSTEM_DISK: public
+      SANCTUM_STATEFUL_DOMAINS: "localhost:5173,localhost:3000"
+    volumes:
+      - backend_storage:/var/www/html/storage/app/public
+    ports:
+      - "8000:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - job_assign_net
+
+  # ─── React Frontend ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000/api/v1
+    container_name: job_assign_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - job_assign_net
+
+# ─── Volumes ──────────────────────────────────────────────────────
+volumes:
+  pgdata:
+    name: job_assign_pgdata
+  pgadmin_data:
+    name: job_assign_pgadmin_data
+  backend_storage:
+    name: job_assign_backend_storage
+
+# ─── Networks ─────────────────────────────────────────────────────
+networks:
+  job_assign_net:
+    name: job_assign_network
+    driver: bridge
