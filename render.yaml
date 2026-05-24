@@ -1,0 +1,94 @@
+# Render Blueprint — Job Assign Management System
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After the first deploy, update the two placeholder env vars below:
+#   APP_URL           → https://<your-backend-name>.onrender.com
+#   FRONTEND_URL      → https://<your-frontend-name>.onrender.com
+#   SANCTUM_STATEFUL_DOMAINS → <your-frontend-name>.onrender.com
+#   VITE_API_URL      → https://<your-backend-name>.onrender.com/api/v1
+#
+# Then trigger a manual re-deploy for both services.
+
+databases:
+  - name: job-assign-db
+    databaseName: job_assign_db
+    user: postgres
+    plan: free
+
+services:
+  # ─── Laravel Backend ──────────────────────────────────────────────
+  - type: web
+    name: job-assign-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    httpPort: 80
+    healthCheckPath: /up
+    plan: free
+    envVars:
+      - key: APP_NAME
+        value: "Job Assign Management System"
+      - key: APP_ENV
+        value: production
+      - key: APP_KEY
+        generateValue: true
+      - key: APP_DEBUG
+        value: "false"
+
+      # Set this after your first deploy to the actual backend URL
+      - key: APP_URL
+        sync: false
+
+      # PostgreSQL — automatically wired from the database above
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: job-assign-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: job-assign-db
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: job-assign-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: job-assign-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: job-assign-db
+          property: password
+
+      - key: CACHE_STORE
+        value: file
+      - key: SESSION_DRIVER
+        value: file
+      - key: QUEUE_CONNECTION
+        value: sync
+      - key: FILESYSTEM_DISK
+        value: local
+
+      # Set these after your first deploy to the actual frontend URL
+      - key: FRONTEND_URL
+        sync: false
+      - key: SANCTUM_STATEFUL_DOMAINS
+        sync: false
+
+  # ─── React Frontend ───────────────────────────────────────────────
+  - type: web
+    name: job-assign-app
+    runtime: docker
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    httpPort: 80
+    plan: free
+    envVars:
+      # Render passes env vars as Docker build args automatically.
+      # Set this to your backend URL before deploying:
+      # https://<your-backend-name>.onrender.com/api/v1
+      - key: VITE_API_URL
+        sync: false
