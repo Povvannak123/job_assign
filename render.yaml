@@ -71,6 +71,8 @@ services:
         value: sync
       - key: FILESYSTEM_DISK
         value: local
+      - key: LOG_CHANNEL
+        value: stderr
 
       # Set these after your first deploy to the actual frontend URL
       - key: FRONTEND_URL

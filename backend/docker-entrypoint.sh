@@ -3,8 +3,9 @@ set -e
 
 echo "=== Job Assign Management System — Backend ==="
 
-# Wait for PostgreSQL to be ready
+# Wait for PostgreSQL to be ready (max 90 seconds)
 echo "Waiting for PostgreSQL at ${DB_HOST}:${DB_PORT}..."
+RETRIES=30
 until php -r "
     try {
         new PDO(
@@ -17,10 +18,15 @@ until php -r "
         exit(1);
     }
 " 2>/dev/null | grep -q "ok"; do
-    echo "  PostgreSQL not ready yet — retrying in 3s..."
+    RETRIES=$((RETRIES - 1))
+    if [ "$RETRIES" -le 0 ]; then
+        echo "ERROR: PostgreSQL did not become ready in time. Starting anyway..."
+        break
+    fi
+    echo "  PostgreSQL not ready yet — retrying in 3s... (${RETRIES} attempts left)"
     sleep 3
 done
-echo "PostgreSQL is ready."
+echo "PostgreSQL is ready (or timed out — continuing)."
 
 # Clear config cache to pick up environment variables
 php artisan config:clear 2>/dev/null || true
