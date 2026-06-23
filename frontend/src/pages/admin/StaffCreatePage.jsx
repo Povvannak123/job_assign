@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { createUser, getUsers } from '../../api/userApi'
+import { createUser } from '../../api/userApi'
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -19,14 +19,28 @@ const DEPARTMENTS = [
   'Administration',
 ]
 
-const SHIFTS = ['Morning', 'Afternoon', 'Night']
-const ROLES = ['Staff', 'Supervisor', 'Manager']
-const GENDERS = ['Male', 'Female', 'Other']
+const SHIFTS = ['Morning/Afternoon', 'Afternoon/Night']
+const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const ROLES = ['Admin', 'Staff']
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const toUsername = (name) =>
   name.trim().toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '')
+
+const formatDateInput = (raw) => {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+}
+
+const dmyToISO = (dmy) => {
+  if (!dmy || dmy.length < 10) return undefined
+  const [d, m, y] = dmy.split('/')
+  if (!d || !m || !y || y.length !== 4) return undefined
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
 
 const getPasswordStrength = (pw) => {
   if (!pw) return null
@@ -96,7 +110,6 @@ const EMPTY_FORM = {
   email: '',
   phone_number: '',
   gender: '',
-  date_of_birth: '',
   staff_id: '',
   // Account
   username: '',
@@ -106,10 +119,11 @@ const EMPTY_FORM = {
   is_active: true,
   // Work
   location_row: '',
+  store_name: '',
   position: '',
   start_date: '',
   shift: '',
-  manager_id: '',
+  day_off: '',
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
@@ -117,24 +131,15 @@ const EMPTY_FORM = {
 const StaffCreatePage = () => {
   const navigate = useNavigate()
   const photoRef = useRef(null)
+  const photoFileRef = useRef(null)
   const usernameManualRef = useRef(false)
 
-  const [managers, setManagers] = useState([])
   const [loading, setLoading] = useState(false)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [errors, setErrors] = useState({})
   const [form, setForm] = useState(EMPTY_FORM)
-
-  useEffect(() => {
-    getUsers()
-      .then((res) => {
-        const all = res.data.data ?? []
-        setManagers(all.filter((u) => u.role === 'admin' || u.position === 'Manager'))
-      })
-      .catch(() => {})
-  }, [])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -157,9 +162,16 @@ const StaffCreatePage = () => {
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    photoFileRef.current = file
     const reader = new FileReader()
     reader.onload = (ev) => setPhotoPreview(ev.target.result)
     reader.readAsDataURL(file)
+  }
+
+  const handleStartDate = (e) => {
+    const formatted = formatDateInput(e.target.value)
+    setForm((f) => ({ ...f, start_date: formatted }))
+    if (errors.start_date) setErrors((p) => ({ ...p, start_date: '' }))
   }
 
   const validate = () => {
@@ -188,23 +200,37 @@ const StaffCreatePage = () => {
     }
     setLoading(true)
     try {
-      await createUser({
+      const payload = {
         name: form.name,
         email: form.email,
         password: form.password,
         phone_number: form.phone_number,
         staff_id: form.staff_id || undefined,
-        position: form.position,
-        shift: form.shift,
+        position: form.position || undefined,
+        shift: form.shift || undefined,
+        day_off: form.day_off || undefined,
         is_active: form.is_active,
         username: form.username,
-        gender: form.gender,
-        date_of_birth: form.date_of_birth || undefined,
+        gender: form.gender || undefined,
         role: form.role.toLowerCase(),
         location_row: form.location_row || undefined,
-        start_date: form.start_date || undefined,
-        manager_id: form.manager_id || undefined,
-      })
+        store_name: form.store_name || undefined,
+        start_date: dmyToISO(form.start_date),
+      }
+
+      let submitData = payload
+      if (photoFileRef.current) {
+        const fd = new FormData()
+        Object.entries(payload).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) {
+            fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : v)
+          }
+        })
+        fd.append('avatar', photoFileRef.current)
+        submitData = fd
+      }
+
+      await createUser(submitData)
       toast.success('Staff member created successfully!')
       navigate('/admin/staff')
     } catch (err) {
@@ -261,7 +287,7 @@ const StaffCreatePage = () => {
           <div className="space-y-5">
             {/* Staff ID (auto-generated) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Staff ID" error={errors.staff_id} hint="Enter the staff's existing ID number">
+              <FormField label="Staff ID" error={errors.staff_id} hint="Enter a custom staff ID number">
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -274,7 +300,7 @@ const StaffCreatePage = () => {
                     name="staff_id"
                     value={form.staff_id}
                     onChange={handleChange}
-                    placeholder="e.g. 00001"
+                    placeholder=""
                     maxLength={20}
                     className={`${inputCls(errors.staff_id)} pl-9`}
                   />
@@ -313,7 +339,7 @@ const StaffCreatePage = () => {
                 {photoPreview && (
                   <button
                     type="button"
-                    onClick={() => setPhotoPreview(null)}
+                    onClick={() => { setPhotoPreview(null); photoFileRef.current = null }}
                     className="text-xs text-red-400 hover:text-red-600 transition-colors"
                   >
                     Remove
@@ -328,7 +354,7 @@ const StaffCreatePage = () => {
                     name="name"
                     value={form.name}
                     onChange={handleChange}
-                    placeholder="e.g. Alice Johnson"
+                    placeholder=""
                     maxLength={50}
                     autoComplete="name"
                     className={inputCls(errors.name)}
@@ -340,7 +366,7 @@ const StaffCreatePage = () => {
                     name="phone_number"
                     value={form.phone_number}
                     onChange={handleChange}
-                    placeholder="0812345678"
+                    placeholder=""
                     maxLength={15}
                     autoComplete="tel"
                     className={inputCls(errors.phone_number)}
@@ -357,11 +383,12 @@ const StaffCreatePage = () => {
                   name="email"
                   value={form.email}
                   onChange={handleChange}
-                  placeholder="alice@luckysupermarket.com"
+                  placeholder=""
                   autoComplete="email"
                   className={inputCls(errors.email)}
                 />
               </FormField>
+
               <FormField label="Gender" error={errors.gender}>
                 <select
                   name="gender"
@@ -370,23 +397,9 @@ const StaffCreatePage = () => {
                   className={inputCls(errors.gender)}
                 >
                   <option value="">— Select gender —</option>
-                  {GENDERS.map((g) => (
-                    <option key={g} value={g}>{g}</option>
-                  ))}
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
                 </select>
-              </FormField>
-            </div>
-
-            {/* Date of Birth (half-width) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Date of Birth" error={errors.date_of_birth}>
-                <input
-                  type="date"
-                  name="date_of_birth"
-                  value={form.date_of_birth}
-                  onChange={handleChange}
-                  className={inputCls(errors.date_of_birth)}
-                />
               </FormField>
             </div>
           </div>
@@ -419,7 +432,7 @@ const StaffCreatePage = () => {
                   name="username"
                   value={form.username}
                   onChange={handleUsernameChange}
-                  placeholder="alice.johnson"
+                  placeholder=""
                   maxLength={30}
                   autoComplete="username"
                   className={inputCls(errors.username)}
@@ -450,7 +463,7 @@ const StaffCreatePage = () => {
                       name="password"
                       value={form.password}
                       onChange={handleChange}
-                      placeholder="Min. 6 characters"
+                      placeholder=""
                       autoComplete="new-password"
                       className={`${inputCls(errors.password)} pr-10`}
                     />
@@ -491,7 +504,7 @@ const StaffCreatePage = () => {
                     name="confirm_password"
                     value={form.confirm_password}
                     onChange={handleChange}
-                    placeholder="Re-enter password"
+                    placeholder=""
                     autoComplete="new-password"
                     className={`${inputCls(errors.confirm_password)} pr-10`}
                   />
@@ -556,7 +569,7 @@ const StaffCreatePage = () => {
           }
         >
           <div className="space-y-4">
-            {/* Location / Row + Position */}
+            {/* Location / Row + Store Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Location / Row" error={errors.location_row}>
                 <input
@@ -564,35 +577,63 @@ const StaffCreatePage = () => {
                   name="location_row"
                   value={form.location_row}
                   onChange={handleChange}
-                  placeholder="e.g. Row A-01"
+                  placeholder=""
                   maxLength={100}
                   className={inputCls(errors.location_row)}
                 />
               </FormField>
+              <FormField label="Store Name" error={errors.store_name}>
+                <input
+                  type="text"
+                  name="store_name"
+                  value={form.store_name}
+                  onChange={handleChange}
+                  placeholder=""
+                  maxLength={50}
+                  className={inputCls(errors.store_name)}
+                />
+              </FormField>
+            </div>
+
+            {/* Position */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Position / Job Title" error={errors.position}>
                 <input
                   type="text"
                   name="position"
                   value={form.position}
                   onChange={handleChange}
-                  placeholder="e.g. Senior Cashier"
+                  placeholder=""
                   maxLength={50}
                   className={inputCls(errors.position)}
                 />
               </FormField>
+
+              {/* Start Date — DD/MM/YYYY typed input */}
+              <FormField label="Start Date" error={errors.start_date} hint="Format: DD/MM/YYYY">
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="start_date"
+                    value={form.start_date}
+                    onChange={handleStartDate}
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
+                    inputMode="numeric"
+                    className={inputCls(errors.start_date)}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                </div>
+              </FormField>
             </div>
 
-            {/* Start Date + Shift */}
+            {/* Shift + Day Off */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Start Date" error={errors.start_date}>
-                <input
-                  type="date"
-                  name="start_date"
-                  value={form.start_date}
-                  onChange={handleChange}
-                  className={inputCls(errors.start_date)}
-                />
-              </FormField>
               <FormField label="Shift" error={errors.shift}>
                 <select
                   name="shift"
@@ -606,24 +647,20 @@ const StaffCreatePage = () => {
                   ))}
                 </select>
               </FormField>
+              <FormField label="Day Off" error={errors.day_off} hint="Fixed every week">
+                <select
+                  name="day_off"
+                  value={form.day_off}
+                  onChange={handleChange}
+                  className={inputCls(errors.day_off)}
+                >
+                  <option value="">— Select day —</option>
+                  {DAYS_OF_WEEK.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </FormField>
             </div>
-
-            {/* Assigned Manager (full-width) */}
-            <FormField label="Assigned Manager" error={errors.manager_id}>
-              <select
-                name="manager_id"
-                value={form.manager_id}
-                onChange={handleChange}
-                className={inputCls(errors.manager_id)}
-              >
-                <option value="">— No assigned manager —</option>
-                {managers.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}{m.position ? ` — ${m.position}` : ''}
-                  </option>
-                ))}
-              </select>
-            </FormField>
           </div>
         </SectionCard>
 

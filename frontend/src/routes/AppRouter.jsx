@@ -23,8 +23,10 @@ import AnnouncementsPage from '../pages/admin/AnnouncementsPage'
 import PerformancePage from '../pages/admin/PerformancePage'
 import AuditLogPage from '../pages/admin/AuditLogPage'
 import ComingSoonPage from '../pages/admin/ComingSoonPage'
+import SettingsPage from '../pages/admin/SettingsPage'
 import StaffDashboard from '../pages/staff/StaffDashboard'
 import MyTasksPage from '../pages/staff/MyTasksPage'
+import StaffProfilePage from '../pages/staff/StaffProfilePage'
 
 const RootRedirect = () => {
   const { user } = useAuth()
@@ -72,7 +74,7 @@ const AppRouter = () => {
           <Route path="performance"   element={<PerformancePage />} />
           <Route path="announcements" element={<AnnouncementsPage />} />
           <Route path="audit-log"     element={<AuditLogPage />} />
-          <Route path="settings"      element={<ComingSoonPage title="Settings" />} />
+          <Route path="settings"      element={<SettingsPage />} />
         </Route>
 
         <Route
@@ -86,6 +88,7 @@ const AppRouter = () => {
           <Route index element={<Navigate to="/staff/dashboard" replace />} />
           <Route path="dashboard" element={<StaffDashboard />} />
           <Route path="tasks" element={<MyTasksPage />} />
+          <Route path="profile" element={<StaffProfilePage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

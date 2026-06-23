@@ -32,6 +32,9 @@ php artisan migrate --force
 # Clear application cache now that tables exist
 php artisan cache:clear 2>/dev/null || true
 
+# Create the public storage symlink so uploaded files are web-accessible
+php artisan storage:link --force 2>/dev/null || true
+
 # Seed only if no users exist
 echo "Checking if database needs seeding..."
 USER_COUNT=$(php -r "
@@ -48,6 +51,11 @@ if [ "$USER_COUNT" = "0" ]; then
 else
     echo "Database already seeded (${USER_COUNT} users found) — skipping."
 fi
+
+# Set up Laravel scheduler cron (runs every minute, artisan handles the schedule)
+echo "* * * * * www-data cd /var/www/html && php artisan schedule:run >> /var/log/laravel-schedule.log 2>&1" > /etc/cron.d/laravel-scheduler
+chmod 0644 /etc/cron.d/laravel-scheduler
+cron
 
 echo "Starting Apache..."
 exec "$@"

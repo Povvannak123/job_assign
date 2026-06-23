@@ -59,7 +59,7 @@ const TaskSummaryChart = ({ data }) => {
       </div>
 
       <div className="relative w-full" style={{ height: 240 }}>
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height={240} minWidth={0} debounce={50}>
           <PieChart>
             <Pie
               data={chartData}

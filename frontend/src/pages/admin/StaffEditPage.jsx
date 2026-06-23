@@ -1,22 +1,46 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { getUser, getUsers, updateUser } from '../../api/userApi'
+import { getUser, updateUser } from '../../api/userApi'
 import Spinner from '../../components/ui/Spinner'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEPARTMENTS = [
-  'Cashier', 'Warehouse', 'Security', 'Cleaning', 'Customer Service',
-  'Bakery', 'Butcher', 'Produce', 'Electronics', 'Pharmacy', 'Administration',
-]
-
+const SHIFTS = ['Morning/Afternoon', 'Afternoon/Night']
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const SHIFTS   = ['Morning', 'Afternoon', 'Night']
-const ROLES    = ['Staff', 'Supervisor', 'Manager']
-const GENDERS  = ['Male', 'Female', 'Other']
+const ROLES = ['Admin', 'Staff']
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const formatDateInput = (raw) => {
+  const digits = raw.replace(/\D/g, '').slice(0, 8)
+  if (digits.length <= 2) return digits
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+}
+
+const dmyToISO = (dmy) => {
+  if (!dmy || dmy.length < 10) return undefined
+  const [d, m, y] = dmy.split('/')
+  if (!d || !m || !y || y.length !== 4) return undefined
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
+const isoToDMY = (iso) => {
+  if (!iso) return ''
+  const date = iso.substring(0, 10)
+  const [y, m, d] = date.split('-')
+  if (!y || !m || !d) return ''
+  return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`
+}
+
+const normalizeShift = (shift) => {
+  if (!shift) return ''
+  if (SHIFTS.includes(shift)) return shift
+  if (shift === 'Morning' || shift === 'Morning - Afternoon') return 'Morning/Afternoon'
+  if (shift === 'Afternoon' || shift === 'Night' || shift === 'Afternoon - Night') return 'Afternoon/Night'
+  return ''
+}
 
 const getPasswordStrength = (pw) => {
   if (!pw) return null
@@ -85,57 +109,50 @@ const StaffEditPage = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const photoRef = useRef(null)
+  const photoFileRef = useRef(null)
 
   const [pageLoading, setPageLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [staffName, setStaffName] = useState('')
-  const [managers, setManagers] = useState([])
   const [photoPreview, setPhotoPreview] = useState(null)
+  const [removeAvatar, setRemoveAvatar] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [errors, setErrors] = useState({})
 
   const [form, setForm] = useState({
     // Personal
-    name: '', email: '', phone_number: '', gender: '', date_of_birth: '',
-    staff_id: '',
+    name: '', email: '', phone_number: '', gender: '', staff_id: '',
     // Account
     username: '', password: '', confirm_password: '', role: 'Staff', is_active: true,
     // Work
-    department: '', position: '', start_date: '', shift: '',
-    location_row: '', store_name: '', day_off: '', manager_id: '',
+    location_row: '', store_name: '', position: '', start_date: '', shift: '', day_off: '',
   })
 
   // ── Load existing staff data ───────────────────────────────────────────────
   useEffect(() => {
-    Promise.all([
-      getUser(id).then((res) => res.data.data ?? res.data),
-      getUsers().then((res) => res.data.data ?? []),
-    ])
-      .then(([user, allUsers]) => {
+    getUser(id)
+      .then((res) => {
+        const user = res.data.data ?? res.data
         setStaffName(user.name)
-        setManagers(allUsers.filter((u) => u.role === 'admin' || u.position === 'Manager'))
-        if (user.avatar) setPhotoPreview(user.avatar)
+        if (user.avatar_url) setPhotoPreview(user.avatar_url)
         setForm({
-          name:           user.name         ?? '',
-          email:          user.email        ?? '',
-          phone_number:   user.phone_number ?? '',
-          gender:         user.gender       ?? '',
-          date_of_birth:  user.date_of_birth ? user.date_of_birth.substring(0, 10) : '',
-          staff_id:       user.staff_id     ?? String(user.id).padStart(5, '0'),
-          username:       user.username     ?? '',
-          password:       '',
+          name:             user.name         ?? '',
+          email:            user.email        ?? '',
+          phone_number:     user.phone_number ?? '',
+          gender:           user.gender       ?? '',
+          staff_id:         user.staff_id     ?? String(user.id).padStart(5, '0'),
+          username:         user.username     ?? user.staff_id ?? '',
+          password:         '',
           confirm_password: '',
-          role:           user.role ? capitalise(user.role) : 'Staff',
-          is_active:      user.is_active ?? true,
-          department:     user.department   ?? '',
-          position:       user.position     ?? '',
-          start_date:     user.start_date   ? user.start_date.substring(0, 10) : '',
-          shift:          user.shift        ?? '',
-          location_row:   user.location_row ?? '',
-          store_name:     user.store_name   ?? '',
-          day_off:        user.day_off      ?? '',
-          manager_id:     user.manager_id   ?? '',
+          role:             user.role ? capitalise(user.role) : 'Staff',
+          is_active:        user.is_active ?? true,
+          location_row:     user.location_row ?? '',
+          store_name:       user.store_name   ?? '',
+          position:         user.position     ?? '',
+          start_date:       isoToDMY(user.start_date),
+          shift:            normalizeShift(user.shift),
+          day_off:          user.day_off      ?? '',
         })
       })
       .catch(() => toast.error('Failed to load staff data.'))
@@ -152,9 +169,17 @@ const StaffEditPage = () => {
   const handlePhotoChange = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
+    photoFileRef.current = file
+    setRemoveAvatar(false)
     const reader = new FileReader()
     reader.onload = (ev) => setPhotoPreview(ev.target.result)
     reader.readAsDataURL(file)
+  }
+
+  const handleStartDate = (e) => {
+    const formatted = formatDateInput(e.target.value)
+    setForm((f) => ({ ...f, start_date: formatted }))
+    if (errors.start_date) setErrors((p) => ({ ...p, start_date: '' }))
   }
 
   // ── Validation ────────────────────────────────────────────────────────────
@@ -189,21 +214,36 @@ const StaffEditPage = () => {
         phone_number: form.phone_number,
         staff_id:     form.staff_id     || undefined,
         gender:       form.gender       || undefined,
-        date_of_birth: form.date_of_birth || undefined,
         username:     form.username     || undefined,
         role:         form.role.toLowerCase(),
         is_active:    form.is_active,
-        department:   form.department   || undefined,
         position:     form.position     || undefined,
-        start_date:   form.start_date   || undefined,
+        start_date:   dmyToISO(form.start_date),
         shift:        form.shift        || undefined,
         location_row: form.location_row || undefined,
         store_name:   form.store_name   || undefined,
         day_off:      form.day_off      || undefined,
-        manager_id:   form.manager_id   || undefined,
       }
       if (form.password) payload.password = form.password
-      await updateUser(id, payload)
+
+      let submitData = payload
+      if (photoFileRef.current || removeAvatar) {
+        const fd = new FormData()
+        fd.append('_method', 'PUT')
+        Object.entries(payload).forEach(([k, v]) => {
+          if (v !== undefined && v !== null) {
+            fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v))
+          }
+        })
+        if (photoFileRef.current) {
+          fd.append('avatar', photoFileRef.current)
+        } else if (removeAvatar) {
+          fd.append('remove_avatar', '1')
+        }
+        submitData = fd
+      }
+
+      await updateUser(id, submitData)
       toast.success('Staff updated successfully!')
       navigate('/admin/staff')
     } catch (err) {
@@ -308,7 +348,11 @@ const StaffEditPage = () => {
                 <input ref={photoRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                 <span className="text-xs text-gray-400">Photo (optional)</span>
                 {photoPreview && (
-                  <button type="button" onClick={() => setPhotoPreview(null)}
+                  <button type="button" onClick={() => {
+                    setPhotoPreview(null)
+                    photoFileRef.current = null
+                    setRemoveAvatar(true)
+                  }}
                     className="text-xs text-red-400 hover:text-red-600 transition-colors">
                     Remove
                   </button>
@@ -340,16 +384,9 @@ const StaffEditPage = () => {
                 <select name="gender" value={form.gender} onChange={handleChange}
                   className={inputCls(errors.gender)}>
                   <option value="">— Select gender —</option>
-                  {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
                 </select>
-              </FormField>
-            </div>
-
-            {/* Date of Birth (half-width) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Date of Birth" error={errors.date_of_birth}>
-                <input type="date" name="date_of_birth" value={form.date_of_birth} onChange={handleChange}
-                  className={inputCls(errors.date_of_birth)} />
               </FormField>
             </div>
 
@@ -374,7 +411,7 @@ const StaffEditPage = () => {
             {/* Username + Role */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Username" error={errors.username}
-                hint="Leave blank to keep the current username">
+                hint="Used for login — typically matches Staff ID">
                 <input type="text" name="username" value={form.username} onChange={handleChange}
                   placeholder="alice.johnson" maxLength={30} autoComplete="username"
                   className={inputCls(errors.username)} />
@@ -486,26 +523,51 @@ const StaffEditPage = () => {
         >
           <div className="space-y-4">
 
-            {/* Location / Row + Position */}
+            {/* Location / Row + Store Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Location / Row" error={errors.location_row}>
                 <input type="text" name="location_row" value={form.location_row} onChange={handleChange}
-                  placeholder="e.g. Row A-01" maxLength={100}
+                  placeholder="" maxLength={100}
                   className={inputCls(errors.location_row)} />
               </FormField>
-              <FormField label="Position / Job Title" error={errors.position}>
-                <input type="text" name="position" value={form.position} onChange={handleChange}
-                  placeholder="e.g. Senior Cashier" maxLength={50}
-                  className={inputCls(errors.position)} />
+              <FormField label="Store Name" error={errors.store_name}>
+                <input type="text" name="store_name" value={form.store_name} onChange={handleChange}
+                  placeholder="" maxLength={50}
+                  className={inputCls(errors.store_name)} />
               </FormField>
             </div>
 
-            {/* Start Date + Shift */}
+            {/* Position + Start Date */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Start Date" error={errors.start_date}>
-                <input type="date" name="start_date" value={form.start_date} onChange={handleChange}
-                  className={inputCls(errors.start_date)} />
+              <FormField label="Position / Job Title" error={errors.position}>
+                <input type="text" name="position" value={form.position} onChange={handleChange}
+                  placeholder="" maxLength={50}
+                  className={inputCls(errors.position)} />
               </FormField>
+              <FormField label="Start Date" error={errors.start_date} hint="Format: DD/MM/YYYY">
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="start_date"
+                    value={form.start_date}
+                    onChange={handleStartDate}
+                    placeholder="DD/MM/YYYY"
+                    maxLength={10}
+                    inputMode="numeric"
+                    className={inputCls(errors.start_date)}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 pointer-events-none">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                </div>
+              </FormField>
+            </div>
+
+            {/* Shift + Day Off */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <FormField label="Shift" error={errors.shift}>
                 <select name="shift" value={form.shift} onChange={handleChange}
                   className={inputCls(errors.shift)}>
@@ -513,16 +575,7 @@ const StaffEditPage = () => {
                   {SHIFTS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </FormField>
-            </div>
-
-            {/* Store Name + Day Off */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <FormField label="Store Name" error={errors.store_name}>
-                <input type="text" name="store_name" value={form.store_name} onChange={handleChange}
-                  placeholder="e.g. Main Store" maxLength={50}
-                  className={inputCls(errors.store_name)} />
-              </FormField>
-              <FormField label="Day Off" error={errors.day_off}>
+              <FormField label="Day Off" error={errors.day_off} hint="Fixed every week">
                 <select name="day_off" value={form.day_off} onChange={handleChange}
                   className={inputCls(errors.day_off)}>
                   <option value="">— Select day —</option>
@@ -530,19 +583,6 @@ const StaffEditPage = () => {
                 </select>
               </FormField>
             </div>
-
-            {/* Assigned Manager */}
-            <FormField label="Assigned Manager" error={errors.manager_id}>
-                <select name="manager_id" value={form.manager_id} onChange={handleChange}
-                  className={inputCls(errors.manager_id)}>
-                  <option value="">— No assigned manager —</option>
-                  {managers.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}{m.position ? ` — ${m.position}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
 
           </div>
         </SectionCard>

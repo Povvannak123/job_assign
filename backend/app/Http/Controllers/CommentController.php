@@ -24,7 +24,8 @@ class CommentController extends Controller
 
         if ($request->hasFile('photo_proof')) {
             $file      = $request->file('photo_proof');
-            $filename  = time() . '_' . $file->getClientOriginalName();
+            $safe      = preg_replace('/[^A-Za-z0-9._-]/', '_', $file->getClientOriginalName());
+            $filename  = time() . '_' . $safe;
             $photoPath = $file->storeAs('task-proofs', $filename, 'public');
         }
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import { login as loginApi, logout as logoutApi } from '../api/authApi'
+import { login as loginApi, logout as logoutApi, getMe } from '../api/authApi'
 
 const AuthContext = createContext(null)
 
@@ -10,6 +10,19 @@ export const AuthProvider = ({ children }) => {
   })
   const [token, setToken] = useState(() => localStorage.getItem('token'))
   const [loading, setLoading] = useState(false)
+
+  // Refresh user profile on mount so avatar_url and other fields stay current
+  useEffect(() => {
+    if (token) {
+      getMe()
+        .then(res => {
+          const fresh = res.data.data
+          setUser(fresh)
+          localStorage.setItem('user', JSON.stringify(fresh))
+        })
+        .catch(() => {})
+    }
+  }, [token])
 
   const login = async (credentials) => {
     setLoading(true)

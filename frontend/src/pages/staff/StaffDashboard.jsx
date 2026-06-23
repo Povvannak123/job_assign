@@ -167,8 +167,11 @@ const StaffDashboard = () => {
 
       {/* ── Greeting Banner ── */}
       <div className="bg-gradient-to-r from-red-600 to-red-500 rounded-2xl px-6 py-5 flex items-center gap-4 text-white shadow-sm">
-        <div className="flex-shrink-0 w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-xl font-bold ring-2 ring-white/30">
-          {getInitials(user?.name)}
+        <div className="flex-shrink-0 w-14 h-14 rounded-full ring-2 ring-white/40 overflow-hidden bg-white/20 flex items-center justify-center text-xl font-bold shadow-md">
+          {displayProfile?.avatar_url
+            ? <img src={displayProfile.avatar_url} alt={user?.name} className="w-full h-full object-cover" />
+            : <span>{getInitials(user?.name)}</span>
+          }
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-red-100 text-sm">{greeting}</p>

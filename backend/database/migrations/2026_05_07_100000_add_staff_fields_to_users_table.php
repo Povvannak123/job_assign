@@ -22,7 +22,7 @@ return new class extends Migration
                 $table->string('store_name', 50)->nullable()->after('day_off');
             }
             if (!Schema::hasColumn('users', 'shift')) {
-                $table->string('shift', 10)->nullable()->after('store_name');
+                $table->string('shift', 30)->nullable()->after('store_name');
             }
         });
     }
